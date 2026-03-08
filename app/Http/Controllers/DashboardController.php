@@ -12,12 +12,11 @@ class DashboardController extends Controller
 {
     public function index(Request $request)
     {
-        // 期間フィルター（デフォルトは今月）
         $selectedMonth = $request->get('month', now()->format('Y-m'));
         $selectedDate = \Carbon\Carbon::createFromFormat('Y-m', $selectedMonth);
         $lastMonth = $selectedDate->copy()->subMonth()->format('Y-m');
+        $lastYearSameMonth = $selectedDate->copy()->subYear()->format('Y-m');
 
-        // 月一覧（直近12ヶ月）を生成
         $months = collect();
         for ($i = 0; $i < 12; $i++) {
             $m = now()->subMonths($i)->format('Y-m');
@@ -37,6 +36,15 @@ class DashboardController extends Controller
             ? round(($currentMonthSales - $lastMonthSales) / $lastMonthSales * 100, 1)
             : 0;
 
+        // KPI: 前年同月の売上合計
+        $lastYearSales = Sale::whereRaw("to_char(sale_date, 'YYYY-MM') = ?", [$lastYearSameMonth])
+            ->sum('total');
+
+        // KPI: 前年同月比
+        $yearOverYear = $lastYearSales > 0
+            ? round(($currentMonthSales - $lastYearSales) / $lastYearSales * 100, 1)
+            : null;
+
         // KPI: 目標合計と達成率
         $currentTarget = MonthlyTarget::where('year_month', $selectedMonth)
             ->sum('target_amount');
@@ -48,7 +56,7 @@ class DashboardController extends Controller
         $currentMonthCount = Sale::whereRaw("to_char(sale_date, 'YYYY-MM') = ?", [$selectedMonth])
             ->count();
 
-        // グラフ: 月別売上推移（直近12ヶ月）
+        // グラフ: 月別売上推移（直近12ヶ月 + 前年同期間）
         $monthlySales = Sale::select(
                 DB::raw("to_char(sale_date, 'YYYY-MM') as month"),
                 DB::raw('SUM(total) as total')
@@ -58,7 +66,17 @@ class DashboardController extends Controller
             ->orderBy('month')
             ->get();
 
-        // グラフ: 店舗別売上（選択月）
+        $lastYearMonthlySales = Sale::select(
+                DB::raw("to_char(sale_date, 'YYYY-MM') as month"),
+                DB::raw('SUM(total) as total')
+            )
+            ->where('sale_date', '>=', now()->subMonths(24)->startOfMonth())
+            ->where('sale_date', '<', now()->subMonths(12)->startOfMonth())
+            ->groupBy('month')
+            ->orderBy('month')
+            ->get();
+
+        // 店舗別売上（選択月）
         $storeSales = Store::select('stores.name', DB::raw('COALESCE(SUM(sales.total), 0) as total'))
             ->leftJoin('sales', function ($join) use ($selectedMonth) {
                 $join->on('stores.id', '=', 'sales.store_id')
@@ -68,7 +86,7 @@ class DashboardController extends Controller
             ->orderByDesc('total')
             ->get();
 
-        // グラフ: カテゴリ別売上構成比（選択月）
+        // カテゴリ別売上構成比（選択月）
         $categorySales = DB::table('sales')
             ->join('products', 'sales.product_id', '=', 'products.id')
             ->join('categories', 'products.category_id', '=', 'categories.id')
@@ -82,10 +100,14 @@ class DashboardController extends Controller
             'currentMonthSales',
             'lastMonthSales',
             'monthOverMonth',
+            'lastYearSales',
+            'lastYearSameMonth',
+            'yearOverYear',
             'achievementRate',
             'currentTarget',
             'currentMonthCount',
             'monthlySales',
+            'lastYearMonthlySales',
             'storeSales',
             'categorySales',
             'selectedMonth',

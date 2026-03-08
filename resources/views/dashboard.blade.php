@@ -21,7 +21,7 @@
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
 
             {{-- KPIカード --}}
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
                 {{-- 選択月の売上 --}}
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                     <div class="text-sm text-gray-500">{{ \Carbon\Carbon::createFromFormat('Y-m', $selectedMonth)->format('Y年n月') }}の売上</div>
@@ -31,6 +31,22 @@
                     <div class="text-sm mt-2 {{ $monthOverMonth >= 0 ? 'text-green-600' : 'text-red-600' }}">
                         {{ $monthOverMonth >= 0 ? '▲' : '▼' }} {{ abs($monthOverMonth) }}% 前月比
                     </div>
+                </div>
+
+                {{-- 前年同月比 --}}
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
+                    <div class="text-sm text-gray-500">前年同月比</div>
+                    @if ($yearOverYear !== null)
+                        <div class="text-2xl font-bold mt-1 {{ $yearOverYear >= 0 ? 'text-green-600' : 'text-red-600' }}">
+                            {{ $yearOverYear >= 0 ? '+' : '' }}{{ $yearOverYear }}%
+                        </div>
+                        <div class="text-sm text-gray-400 mt-2">
+                            前年: ¥{{ number_format($lastYearSales) }}
+                        </div>
+                    @else
+                        <div class="text-2xl font-bold text-gray-400 mt-1">---</div>
+                        <div class="text-sm text-gray-400 mt-2">前年データなし</div>
+                    @endif
                 </div>
 
                 {{-- 前月の売上 --}}
@@ -63,19 +79,17 @@
 
             {{-- 月別売上推移グラフ --}}
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6 mb-8">
-                <h3 class="text-lg font-semibold text-gray-800 mb-4">月別売上推移</h3>
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">月別売上推移（前年比較）</h3>
                 <canvas id="monthlySalesChart" height="100"></canvas>
             </div>
 
             {{-- 店舗別 & カテゴリ別 --}}
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {{-- 店舗別売上 --}}
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                     <h3 class="text-lg font-semibold text-gray-800 mb-4">店舗別売上（{{ \Carbon\Carbon::createFromFormat('Y-m', $selectedMonth)->format('n月') }}）</h3>
                     <canvas id="storeSalesChart" height="200"></canvas>
                 </div>
 
-                {{-- カテゴリ別売上 --}}
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                     <h3 class="text-lg font-semibold text-gray-800 mb-4">カテゴリ別売上（{{ \Carbon\Carbon::createFromFormat('Y-m', $selectedMonth)->format('n月') }}）</h3>
                     <canvas id="categorySalesChart" height="200"></canvas>
@@ -88,33 +102,46 @@
     @push('scripts')
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        const monthlySalesData = {!! json_encode($monthlySales->pluck('total')) !!};
         const monthlySalesLabels = {!! json_encode($monthlySales->pluck('month')) !!};
+        const monthlySalesData = {!! json_encode($monthlySales->pluck('total')) !!};
+        const lastYearData = {!! json_encode($lastYearMonthlySales->pluck('total')) !!};
+        const lastYearLabels = {!! json_encode($lastYearMonthlySales->pluck('month')) !!};
         const selectedMonth = '{{ $selectedMonth }}';
 
-        // 選択月をハイライトするための背景色配列
-        const barColors = monthlySalesLabels.map(label =>
-            label === selectedMonth ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.1)'
-        );
+        // 前年データを今年のラベルに合わせてマッピング
+        const lastYearMapped = monthlySalesLabels.map((label, i) => {
+            return lastYearData[i] !== undefined ? lastYearData[i] : null;
+        });
 
         new Chart(document.getElementById('monthlySalesChart'), {
             type: 'line',
             data: {
                 labels: monthlySalesLabels,
-                datasets: [{
-                    label: '売上合計',
-                    data: monthlySalesData,
-                    borderColor: 'rgb(59, 130, 246)',
-                    backgroundColor: barColors,
-                    fill: true,
-                    tension: 0.3,
-                    pointBackgroundColor: monthlySalesLabels.map(label =>
-                        label === selectedMonth ? 'rgb(239, 68, 68)' : 'rgb(59, 130, 246)'
-                    ),
-                    pointRadius: monthlySalesLabels.map(label =>
-                        label === selectedMonth ? 6 : 3
-                    ),
-                }]
+                datasets: [
+                    {
+                        label: '今年',
+                        data: monthlySalesData,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: monthlySalesLabels.map(label =>
+                            label === selectedMonth ? 'rgb(239, 68, 68)' : 'rgb(59, 130, 246)'
+                        ),
+                        pointRadius: monthlySalesLabels.map(label =>
+                            label === selectedMonth ? 6 : 3
+                        ),
+                    },
+                    {
+                        label: '前年',
+                        data: lastYearMapped,
+                        borderColor: 'rgba(156, 163, 175, 0.5)',
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        tension: 0.3,
+                        pointRadius: 2,
+                    }
+                ]
             },
             options: {
                 responsive: true,
@@ -122,7 +149,7 @@
                     tooltip: {
                         callbacks: {
                             label: function(ctx) {
-                                return '¥' + Number(ctx.raw).toLocaleString();
+                                return ctx.dataset.label + ': ¥' + Number(ctx.raw).toLocaleString();
                             }
                         }
                     }
