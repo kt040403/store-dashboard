@@ -5,6 +5,9 @@
                 📋 売上一覧
             </h2>
             <div class="flex gap-2">
+                <a href="{{ route('sales.import.show') }}" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+                    📤 インポート
+                </a>
                 <a href="{{ route('sales.export', array_merge(request()->query(), ['format' => 'xlsx'])) }}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
                     📥 Excel
                 </a>
