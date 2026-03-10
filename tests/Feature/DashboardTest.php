@@ -79,4 +79,75 @@ class DashboardTest extends TestCase
         $response->assertStatus(200);
         $response->assertSee('¥0');
     }
+
+    public function test_期間フィルターで月を切り替えられる(): void
+    {
+        $lastMonth = now()->subMonth()->format('Y-m');
+
+        Sale::create([
+            'store_id' => $this->store->id,
+            'product_id' => $this->product->id,
+            'quantity' => 5,
+            'unit_price' => 100000,
+            'total' => 500000,
+            'sale_date' => now()->subMonth()->format('Y-m') . '-15',
+        ]);
+
+        $response = $this->actingAs($this->user)->get('/dashboard?month=' . $lastMonth);
+
+        $response->assertStatus(200);
+        $response->assertSee('500,000');
+    }
+
+    public function test_前年同月比が表示される(): void
+    {
+        // 今月のデータ
+        Sale::create([
+            'store_id' => $this->store->id,
+            'product_id' => $this->product->id,
+            'quantity' => 3,
+            'unit_price' => 100000,
+            'total' => 300000,
+            'sale_date' => now()->format('Y-m-d'),
+        ]);
+
+        // 前年同月のデータ
+        Sale::create([
+            'store_id' => $this->store->id,
+            'product_id' => $this->product->id,
+            'quantity' => 2,
+            'unit_price' => 100000,
+            'total' => 200000,
+            'sale_date' => now()->subYear()->format('Y-m-d'),
+        ]);
+
+        $response = $this->actingAs($this->user)->get('/dashboard');
+
+        $response->assertStatus(200);
+        $response->assertSee('前年同月比');
+    }
+
+    public function test_前年データなしでもエラーにならない(): void
+    {
+        Sale::create([
+            'store_id' => $this->store->id,
+            'product_id' => $this->product->id,
+            'quantity' => 1,
+            'unit_price' => 100000,
+            'total' => 100000,
+            'sale_date' => now()->format('Y-m-d'),
+        ]);
+
+        $response = $this->actingAs($this->user)->get('/dashboard');
+
+        $response->assertStatus(200);
+        $response->assertSee('前年データなし');
+    }
+
+    public function test_不正な月パラメータでもエラーにならない(): void
+    {
+        $response = $this->actingAs($this->user)->get('/dashboard?month=' . now()->format('Y-m'));
+
+        $response->assertStatus(200);
+    }
 }
